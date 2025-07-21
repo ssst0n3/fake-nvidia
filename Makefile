@@ -1,5 +1,4 @@
 # Makefile for building both the Kernel Module and the LD_PRELOAD Shim
-# Comments are in English
 
 # --- Part 1: Kernel Module Configuration ---
 # 'obj-m' tells the kernel build system that we want to build a module.
@@ -88,6 +87,7 @@ uninstall:
 	rm -f $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
 	# Update the list of module dependencies.
 	depmod -a
+	modprobe fake_nvidia_driver
 	# Remove the shared library from the system directory.
 	rm -f $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.

@@ -61,6 +61,6 @@ static void __exit fake_nvidia_exit(void) {
 module_init(fake_nvidia_init);
 module_exit(fake_nvidia_exit);
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Your Name / AI Assistant");
+MODULE_LICENSE("MIT");
+MODULE_AUTHOR("ssst0n3 with gemini-2.5-pro");
 MODULE_DESCRIPTION("A fake driver with the correct GPU PCI path for nvidia-container-cli.");

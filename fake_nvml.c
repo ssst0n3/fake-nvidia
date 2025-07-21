@@ -8,8 +8,11 @@
  * Compilation:
  *   gcc -shared -fPIC -o libnvidia-ml.so.1 fake_nvml.c -ldl
  *
- * Usage:
+ * Usage (without logs):
  *   LD_PRELOAD=./libnvidia-ml.so.1 nvidia-container-cli info
+ *
+ * Usage (with logs):
+ *   FAKE_NVML_LOG=1 LD_PRELOAD=./libnvidia-ml.so.1 nvidia-container-cli info
  */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -43,12 +46,10 @@ typedef enum nvmlBrandType_enum {
     NVML_BRAND_TESLA = 2
 } nvmlBrandType_t;
 
-// ******************** FIX: ADDED ENABLE/DISABLE ENUM FOR MIG ********************
 typedef enum nvmlEnableState_enum {
     NVML_FEATURE_DISABLED = 0,
     NVML_FEATURE_ENABLED = 1
 } nvmlEnableState_t;
-// ********************************************************************************
 
 #define NVML_DEVICE_NAME_BUFFER_SIZE 64
 #define NVML_DEVICE_UUID_BUFFER_SIZE 80
@@ -71,15 +72,19 @@ typedef struct nvmlMemory_st {
 } nvmlMemory_t;
 
 // --- Logging Utility ---
+// ******************** FIX: MODIFIED LOG MACRO FOR CONDITIONAL LOGGING ********************
 #define LOG(func_name, msg, ...)                                         \
     do {                                                                 \
-        time_t t = time(NULL);                                           \
-        struct tm *tm_info = localtime(&t);                              \
-        char time_buf[26];                                               \
-        strftime(time_buf, 26, "%Y-%m-%d %H:%M:%S", tm_info);             \
-        fprintf(stderr, "[FAKE-GPU %s %d:%d %s] " msg "\n",               \
-                time_buf, getpid(), getpid(), func_name, ##__VA_ARGS__);  \
+        if (getenv("FAKE_NVML_LOG")) {                                   \
+            time_t t = time(NULL);                                       \
+            struct tm *tm_info = localtime(&t);                          \
+            char time_buf[26];                                           \
+            strftime(time_buf, 26, "%Y-%m-%d %H:%M:%S", tm_info);         \
+            fprintf(stderr, "[FAKE-GPU %s %d:%d %s] " msg "\n",           \
+                    time_buf, getpid(), getpid(), func_name, ##__VA_ARGS__); \
+        }                                                                \
     } while (0)
+// *****************************************************************************************
 
 // --- Fake GPU State ---
 #define FAKE_GPU_COUNT 4
@@ -206,7 +211,6 @@ nvmlReturn_t nvmlDeviceGetPciInfo(nvmlDevice_t device, nvmlPciInfo_t* pci) {
     return NVML_SUCCESS;
 }
 
-// ******************** FIX: IMPLEMENTED ARCHITECTURE FUNCTION ********************
 nvmlReturn_t nvmlDeviceGetCudaComputeCapability(nvmlDevice_t device, int *major, int *minor) {
     LOG(__func__, "enter");
     if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
@@ -219,7 +223,6 @@ nvmlReturn_t nvmlDeviceGetCudaComputeCapability(nvmlDevice_t device, int *major,
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
-// ********************************************************************************
 
 nvmlReturn_t nvmlDeviceGetBrand(nvmlDevice_t device, nvmlBrandType_t *type) {
     LOG(__func__, "enter");
@@ -238,7 +241,6 @@ nvmlReturn_t nvmlDeviceGetMinorNumber(nvmlDevice_t device, unsigned int* minorNu
     return NVML_SUCCESS;
 }
 
-// ******************** FIX: IMPLEMENTED MIG CAPABILITY FUNCTION ********************
 nvmlReturn_t nvmlDeviceGetMigCapability(nvmlDevice_t device, unsigned int* isMigCapable, unsigned int* isMigGpu) {
     LOG(__func__, "enter");
     if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
@@ -251,9 +253,7 @@ nvmlReturn_t nvmlDeviceGetMigCapability(nvmlDevice_t device, unsigned int* isMig
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
-// **********************************************************************************
 
-// ******************** FIX: IMPLEMENTED MIG MODE FUNCTION ********************
 nvmlReturn_t nvmlDeviceGetMigMode(nvmlDevice_t device, unsigned int *currentMode, unsigned int *pendingMode) {
     LOG(__func__, "enter");
     if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
@@ -266,7 +266,6 @@ nvmlReturn_t nvmlDeviceGetMigMode(nvmlDevice_t device, unsigned int *currentMode
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
-// ****************************************************************************
 
 // --- Symbol Aliases (Keep these for compatibility) ---
 nvmlReturn_t nvmlInit(void) __attribute__((weak, alias("nvmlInit_v2")));
