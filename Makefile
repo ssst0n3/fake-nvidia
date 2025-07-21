@@ -1,11 +1,26 @@
 # Makefile for building both the Kernel Module and the LD_PRELOAD Shim
 
+# --- Preamble: Kernel Version Configuration ---
+# Allows specifying a target kernel version via the KERNEL_RELEASE variable on the command line.
+# This is useful for building inside a container where `uname -r` might reflect the host's kernel
+# instead of the target kernel for which the headers are installed.
+#
+# Example usage:
+#   make KERNEL_RELEASE=5.15.0-101-generic
+#
+# If KERNEL_RELEASE is not provided, it defaults to the currently running kernel version.
+ifeq ($(KERNEL_RELEASE),)
+  KVERSION := $(shell uname -r)
+else
+  KVERSION := $(KERNEL_RELEASE)
+endif
+
 # --- Part 1: Kernel Module Configuration ---
 # 'obj-m' tells the kernel build system that we want to build a module.
 obj-m += fake_nvidia_driver.o
 
-# Path to the kernel source/header files.
-KDIR := /lib/modules/$(shell uname -r)/build
+# Path to the kernel source/header files, now using the configurable KVERSION.
+KDIR := /lib/modules/$(KVERSION)/build
 
 
 # --- Part 2: LD_PRELOAD Shim Configuration ---
@@ -24,7 +39,7 @@ SHIM_CFLAGS := -shared -fPIC -ldl
 
 # --- Part 3: Installation Path Configuration ---
 # Destination for the kernel module. Using 'extra' is a common practice.
-KMOD_INSTALL_PATH := /lib/modules/$(shell uname -r)/kernel/drivers/extra
+KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
 # Destination for the shared library. /usr/local/lib is a standard location.
 SHIM_INSTALL_PATH := /usr/local/lib/libnvidia-ml.so.1
 
@@ -35,7 +50,7 @@ SHIM_INSTALL_PATH := /usr/local/lib/libnvidia-ml.so.1
 # It depends on the kernel module and the shared library.
 .PHONY: all
 all: kernel_module $(SHIM_TARGET)
-	@echo "Build complete. Products:"
+	@echo "Build complete for kernel version $(KVERSION). Products:"
 	@echo "  - Kernel Module: fake_nvidia_driver.ko"
 	@echo "  - LD_PRELOAD Shim: $(SHIM_TARGET)"
 
