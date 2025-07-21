@@ -88,8 +88,6 @@ install: all
 	mkdir -p $(KMOD_INSTALL_PATH)
 	# Copy the kernel module to the system directory with proper permissions.
 	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
-	# Update the list of module dependencies.
-	depmod -a
 	# Auto load the module on boot.
 	echo "fake_nvidia_driver" > /etc/modules-load.d/fake_nvidia_driver.conf
 	# Copy the shared library to the system directory with proper permissions.
