@@ -2,7 +2,7 @@
 
 ## why
 
-* we can use it to reproduce nvidia-container-toolkit vulnerability without gpu device
+* we can use it to reproduce nvidia-container-toolkit vulnerability without gpu device, e.g.:
   * [cve-2025-23266](https://github.com/ssst0n3/docker_archive/tree/main/vul/cve-2025-23266)
 
 ## quick-start
