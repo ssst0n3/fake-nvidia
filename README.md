@@ -1,5 +1,7 @@
 # fake-nvidia: test nvidia-container-toolkit without gpu device
 
+## quick-start
+
 ```shell
 $ apt update
 $ apt install -y git build-essential linux-headers-$(uname -r)
@@ -7,6 +9,11 @@ $ git clone https://github.com/ssst0n3/fake-nvidia
 $ cd fake-nvidia
 $ make install
 ```
+
+## why
+
+* we can use it to reproduce nvidia-container-toolkit vulnerability without gpu device
+  * [cve-2025-23266](https://github.com/ssst0n3/docker_archive/tree/main/vul/cve-2025-23266)
 
 ## usage
 
