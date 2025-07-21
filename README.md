@@ -26,11 +26,13 @@ root@localhost:~# apt update
 root@localhost:~# apt install -y git curl build-essential linux-headers-$(uname -r)
 root@localhost:~# git clone https://github.com/ssst0n3/fake-nvidia
 root@localhost:~# cd fake-nvidia
-oot@localhost:~/fake-nvidia# make install
-oot@localhost:~/fake-nvidia# ./mknod.sh
-oot@localhost:~/fake-nvidia# lsmod |grep nvidia
+root@localhost:~/fake-nvidia# make install
+root@localhost:~/fake-nvidia# cd
+root@localhost:~# ./mknod.sh
+root@localhost:~# modprobe fake_nvidia_driver
+root@localhost:~# lsmod |grep nvidia
 fake_nvidia_driver     12288  0
-oot@localhost:~/fake-nvidia# ls -lah /usr/local/lib/libnvidia-ml.so.1
+root@localhost:~# ls -lah /usr/local/lib/libnvidia-ml.so.1
 -rwxr-xr-x 1 root root 21K Jul 21 01:46 /usr/local/lib/libnvidia-ml.so.1
 ```
 

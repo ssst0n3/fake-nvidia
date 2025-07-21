@@ -88,7 +88,8 @@ install: all
 	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
 	# Update the list of module dependencies.
 	depmod -a
-	modprobe fake_nvidia_driver
+	# Auto load the module on boot.
+	echo "fake_nvidia_driver" > /etc/modules-load.d/fake_nvidia_driver.conf
 	# Copy the shared library to the system directory with proper permissions.
 	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.
