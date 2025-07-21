@@ -99,7 +99,6 @@ install: all
 	# Install the mknod service.
 	install -m 755 mknod.sh $(MKNOD_INSTALL_PATH)
 	install -m 644 mknod.service $(SERVICE_FILE_PATH)
-	systemctl daemon-reload
 	systemctl enable fake-nvidia-mknod.service
 	@echo "Installation complete."
 
