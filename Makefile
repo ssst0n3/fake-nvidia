@@ -73,6 +73,7 @@ install: all
 	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
 	# Update the list of module dependencies.
 	depmod -a
+	modprobe fake_nvidia_driver
 	# Copy the shared library to the system directory with proper permissions.
 	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.
@@ -87,7 +88,6 @@ uninstall:
 	rm -f $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
 	# Update the list of module dependencies.
 	depmod -a
-	modprobe fake_nvidia_driver
 	# Remove the shared library from the system directory.
 	rm -f $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.

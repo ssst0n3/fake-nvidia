@@ -10,13 +10,18 @@ $ make install
 
 ## usage
 
-install fake-nvidia
+start up a test environment without gpu device
 
 ```shell
 $ git clone https://github.com/ssst0n3/docker_archive
 $ cd docker_archive/ubuntu/24.04
 $ docker compose -f docker-compose.yml -f docker-compose.kvm up -d
 $ ./ssh
+```
+
+install fake-nvidia
+
+```shell
 root@localhost:~# apt update
 root@localhost:~# apt install -y git curl build-essential linux-headers-$(uname -r)
 root@localhost:~# git clone https://github.com/ssst0n3/fake-nvidia
