@@ -42,6 +42,8 @@ SHIM_CFLAGS := -shared -fPIC -ldl
 KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
 # Destination for the shared library. /usr/local/lib is a standard location.
 SHIM_INSTALL_PATH := /usr/local/lib/libnvidia-ml.so.1
+MKNOD_INSTALL_PATH := /usr/local/bin/fake-nvidia-mknod.sh
+SERVICE_FILE_PATH := /etc/systemd/system/fake-nvidia-mknod.service
 
 
 # --- Part 4: Build Rules ---
@@ -94,14 +96,29 @@ install: all
 	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.
 	ldconfig
+	# Install the mknod service.
+	install -m 755 mknod.sh $(MKNOD_INSTALL_PATH)
+	install -m 644 mknod.service $(SERVICE_FILE_PATH)
+	systemctl daemon-reload
+	systemctl enable fake-nvidia-mknod.service
 	@echo "Installation complete."
 
 # 'uninstall' target to remove files from system directories.
 .PHONY: uninstall
 uninstall:
-	@echo "Uninstalling kernel module and shim library..."
+	@echo "Uninstalling kernel module, shim library and service..."
+	# Stop and disable the mknod service.
+	systemctl stop fake-nvidia-mknod.service || true
+	systemctl disable fake-nvidia-mknod.service || true
+	# Remove the mknod service and script.
+	rm -f $(SERVICE_FILE_PATH)
+	rm -f $(MKNOD_INSTALL_PATH)
+	# Reload the systemd daemon to apply changes.
+	systemctl daemon-reload
 	# Remove the kernel module from the system directory.
 	rm -f $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
+	# Remove the auto-load configuration for the kernel module.
+	rm -f /etc/modules-load.d/fake_nvidia_driver.conf
 	# Update the list of module dependencies.
 	depmod -a
 	# Remove the shared library from the system directory.
