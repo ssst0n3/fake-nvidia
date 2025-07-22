@@ -90,6 +90,8 @@ install: all
 	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
 	# Auto load the module on boot.
 	echo "fake_nvidia_driver" > /etc/modules-load.d/fake_nvidia_driver.conf
+	# Try to update the list of module dependencies, this may fail during docker build
+	depmod -a || true
 	# Copy the shared library to the system directory with proper permissions.
 	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.
