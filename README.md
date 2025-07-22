@@ -8,11 +8,13 @@
 ## quick-start
 
 ```shell
-$ apt update
-$ apt install -y git build-essential linux-headers-$(uname -r)
-$ git clone https://github.com/ssst0n3/fake-nvidia
-$ cd fake-nvidia
-$ make install
+apt update
+apt install -y git build-essential linux-headers-$(uname -r)
+git clone https://github.com/ssst0n3/fake-nvidia
+cd fake-nvidia
+make install
+./mknod.sh
+modprobe fake_nvidia_driver
 ```
 
 ## usage
