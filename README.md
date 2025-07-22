@@ -14,7 +14,6 @@ git clone https://github.com/ssst0n3/fake-nvidia
 cd fake-nvidia
 make install
 ./mknod.sh
-depmod -a
 modprobe fake_nvidia_driver
 ```
 
@@ -39,7 +38,6 @@ root@localhost:~# cd fake-nvidia
 root@localhost:~/fake-nvidia# make install
 root@localhost:~/fake-nvidia# cd
 root@localhost:~# ./mknod.sh
-root@localhost:~# depmod -a
 root@localhost:~# modprobe fake_nvidia_driver
 root@localhost:~# lsmod |grep nvidia
 fake_nvidia_driver     12288  0
