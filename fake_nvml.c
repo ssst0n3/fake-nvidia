@@ -72,7 +72,6 @@ typedef struct nvmlMemory_st {
 } nvmlMemory_t;
 
 // --- Logging Utility ---
-// ******************** FIX: MODIFIED LOG MACRO FOR CONDITIONAL LOGGING ********************
 #define LOG(func_name, msg, ...)                                         \
     do {                                                                 \
         if (getenv("FAKE_NVML_LOG")) {                                   \
@@ -84,7 +83,6 @@ typedef struct nvmlMemory_st {
                     time_buf, getpid(), getpid(), func_name, ##__VA_ARGS__); \
         }                                                                \
     } while (0)
-// *****************************************************************************************
 
 // --- Fake GPU State ---
 #define FAKE_GPU_COUNT 4
@@ -241,6 +239,20 @@ nvmlReturn_t nvmlDeviceGetMinorNumber(nvmlDevice_t device, unsigned int* minorNu
     return NVML_SUCCESS;
 }
 
+// ******************** FIX: ADDED MISSING FUNCTION ********************
+nvmlReturn_t nvmlDeviceGetMaxMigDeviceCount(nvmlDevice_t device, unsigned int* count) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (count == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+
+    // Our fake Tesla T4 does not support MIG.
+    *count = 0;
+
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+// *********************************************************************
+
 nvmlReturn_t nvmlDeviceGetMigCapability(nvmlDevice_t device, unsigned int* isMigCapable, unsigned int* isMigGpu) {
     LOG(__func__, "enter");
     if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
@@ -266,6 +278,22 @@ nvmlReturn_t nvmlDeviceGetMigMode(nvmlDevice_t device, unsigned int *currentMode
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
+
+// ******************** ENHANCEMENT: ADDED COMMON FUNCTION FOR ROBUSTNESS ********************
+nvmlReturn_t nvmlDeviceGetMemoryInfo(nvmlDevice_t device, nvmlMemory_t *memory) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (memory == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+
+    // Fake data for a Tesla T4 (16 GB VRAM)
+    memory->total = 16ULL * 1024 * 1024 * 1024; // 16 GiB
+    memory->free = 15ULL * 1024 * 1024 * 1024;  // Fake 15 GiB free
+    memory->used = 1ULL * 1024 * 1024 * 1024;   // Fake 1 GiB used
+
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+// *****************************************************************************************
 
 // --- Symbol Aliases (Keep these for compatibility) ---
 nvmlReturn_t nvmlInit(void) __attribute__((weak, alias("nvmlInit_v2")));
