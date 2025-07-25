@@ -48,6 +48,16 @@ SERVICE_FILE_PATH := /etc/systemd/system/fake-nvidia-mknod.service
 
 # --- Part 4: Build Rules ---
 
+# --- NVIDIA Driver Version Override (Optional) ---
+# Allows specifying an NVIDIA driver version to be embedded into the shim library.
+# This will replace the default version string in fake_nvml.c before compilation.
+#
+# Example usage:
+#   make NVIDIA_DRIVER_VERSION=470.82.01
+#
+# If NVIDIA_DRIVER_VERSION is not provided, the default version in the source file is used.
+# Note: This modifies the source file 'fake_nvml.c' in-place.
+
 # 'all' is the default target, which is executed when 'make' is run.
 # It depends on the kernel module and the shared library.
 .PHONY: all
@@ -62,9 +72,14 @@ kernel_module:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 # Rule for building the shared library.
+# Now includes logic to optionally replace the driver version string.
 # $@ represents the target file (libfake_nvml.so).
 # $^ represents all dependency files (fake_nvml.c).
 $(SHIM_TARGET): $(SHIM_SOURCE)
+	@if [ -n "$(NVIDIA_DRIVER_VERSION)" ]; then \
+		echo "Overriding NVIDIA driver version to $(NVIDIA_DRIVER_VERSION) in $(SHIM_SOURCE)..."; \
+		sed -i 's/535.104.05/$(NVIDIA_DRIVER_VERSION)/g' $(SHIM_SOURCE); \
+	fi
 	$(CC) $(SHIM_CFLAGS) -o $@ $^
 
 # 'clean' target is used to delete all generated files.
