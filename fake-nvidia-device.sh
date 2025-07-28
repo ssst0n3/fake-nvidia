@@ -1,8 +1,11 @@
 #!/bin/bash
-mknod /dev/nvidiactl c 195 255
-chmod 666 /dev/nvidiactl
 
-for i in {0..3}; do
-    mknod /dev/nvidia$i c 195 $i
-    chmod 666 /dev/nvidia$i
+MAJOR=195
+NUM_GPUS=4
+mknod /dev/nvidiactl c $MAJOR 255
+mknod /dev/nvidia-modeset c $MAJOR 254
+
+for i in $(seq 0 $(($NUM_GPUS - 1))); do
+  mknod /dev/nvidia$i c $MAJOR $i
 done
+chmod 666 /dev/nvidia*
