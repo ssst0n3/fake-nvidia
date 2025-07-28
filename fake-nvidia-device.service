@@ -1,11 +1,11 @@
-# mknod.service
+# fake-nvidia-device.service
 [Unit]
 Description=Create device nodes for fake nvidia driver
 After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/fake-nvidia-mknod.sh
+ExecStart=/usr/local/bin/fake-nvidia-device.sh
 
 [Install]
 WantedBy=multi-user.target
