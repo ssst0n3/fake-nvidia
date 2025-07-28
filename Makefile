@@ -42,8 +42,8 @@ SHIM_CFLAGS := -shared -fPIC -ldl
 KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
 # Destination for the shared library. /usr/local/lib is a standard location.
 SHIM_INSTALL_PATH := /usr/local/lib/libnvidia-ml.so.1
-MKNOD_INSTALL_PATH := /usr/local/bin/fake-nvidia-mknod.sh
-SERVICE_FILE_PATH := /etc/systemd/system/fake-nvidia-mknod.service
+DEVICE_INSTALL_PATH := /usr/local/bin/fake-nvidia-device.sh
+SERVICE_FILE_PATH := /etc/systemd/system/fake-nvidia-device.service
 
 
 # --- Part 4: Build Rules ---
@@ -111,22 +111,22 @@ install: all
 	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH)
 	# Update the dynamic linker's cache.
 	ldconfig
-	# Install the mknod service.
-	install -m 755 mknod.sh $(MKNOD_INSTALL_PATH)
-	install -m 644 mknod.service $(SERVICE_FILE_PATH)
-	systemctl enable fake-nvidia-mknod.service
+	# Install the fake-nvidia-device service.
+	install -m 755 fake-nvidia-device.sh $(DEVICE_INSTALL_PATH)
+	install -m 644 fake-nvidia-device.service $(SERVICE_FILE_PATH)
+	systemctl enable fake-nvidia-device.service
 	@echo "Installation complete."
 
 # 'uninstall' target to remove files from system directories.
 .PHONY: uninstall
 uninstall:
 	@echo "Uninstalling kernel module, shim library and service..."
-	# Stop and disable the mknod service.
-	systemctl stop fake-nvidia-mknod.service || true
-	systemctl disable fake-nvidia-mknod.service || true
-	# Remove the mknod service and script.
+	# Stop and disable the fake-nvidia-device service.
+	systemctl stop fake-nvidia-device.service || true
+	systemctl disable fake-nvidia-device.service || true
+	# Remove the fake-nvidia-device service and script.
 	rm -f $(SERVICE_FILE_PATH)
-	rm -f $(MKNOD_INSTALL_PATH)
+	rm -f $(DEVICE_INSTALL_PATH)
 	# Reload the systemd daemon to apply changes.
 	systemctl daemon-reload
 	# Remove the kernel module from the system directory.

@@ -13,7 +13,7 @@ apt install -y git build-essential linux-headers-$(uname -r)
 git clone https://github.com/ssst0n3/fake-nvidia
 cd fake-nvidia
 make install
-./mknod.sh
+./fake-nvidia-device.sh
 modprobe fake_nvidia_driver
 ```
 
@@ -23,7 +23,7 @@ start up a test environment without gpu device
 
 ```shell
 $ git clone https://github.com/ssst0n3/docker_archive
-$ cd docker_archive/ubuntu/24.04
+$ cd docker_archive/docker/v28.3.2
 $ docker compose -f docker-compose.yml -f docker-compose.kvm up -d
 $ ./ssh
 ```
@@ -37,7 +37,7 @@ root@localhost:~# git clone https://github.com/ssst0n3/fake-nvidia
 root@localhost:~# cd fake-nvidia
 root@localhost:~/fake-nvidia# make install
 root@localhost:~/fake-nvidia# cd
-root@localhost:~# ./mknod.sh
+root@localhost:~# systemctl start fake-nvidia-device
 root@localhost:~# modprobe fake_nvidia_driver
 root@localhost:~# lsmod |grep nvidia
 fake_nvidia_driver     12288  0
@@ -45,10 +45,9 @@ root@localhost:~# ls -lah /usr/local/lib/libnvidia-ml.so.1
 -rwxr-xr-x 1 root root 21K Jul 21 01:46 /usr/local/lib/libnvidia-ml.so.1
 ```
 
-install docker, nvidia-container-toolkit
+install nvidia-container-toolkit
 
 ```shell
-root@localhost:~# apt install -y docker.io
 root@localhost:~# curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
   && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
