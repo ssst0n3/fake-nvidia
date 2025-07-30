@@ -38,25 +38,36 @@ SHIM_CFLAGS := -shared -fPIC -ldl
 
 
 # --- Part 3: Installation Path Configuration ---
+# --- NVIDIA Driver Version Override (Used for both build and installation path) ---
+# Allows specifying an NVIDIA driver version. This will be embedded into the shim library
+# and used to construct the installation path.
+#
+# Example usage:
+#   make install NVIDIA_DRIVER_VERSION=470.82.01
+#
+# If NVIDIA_DRIVER_VERSION is not provided, it defaults to the version below.
+# The `?=` operator sets the variable only if it's not already set from the command line.
+NVIDIA_DRIVER_VERSION ?= 535.104.05
+
 # Destination for the kernel module. Using 'extra' is a common practice.
 KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
-# Destination for the shared library. /usr/local/lib is a standard location.
-SHIM_INSTALL_PATH := /usr/local/lib/libnvidia-ml.so.1
+
+# --- NEW: Define installation paths for the shim library and symlinks ---
+# Base directory for the NVIDIA library.
+SHIM_INSTALL_DIR := /usr/lib/x86_64-linux-gnu
+# The full path for the versioned library file.
+SHIM_INSTALL_PATH_VERSIONED := $(SHIM_INSTALL_DIR)/libnvidia-ml.so.$(NVIDIA_DRIVER_VERSION)
+# The path for the primary symlink (.so.1).
+SHIM_SYMLINK_1 := $(SHIM_INSTALL_DIR)/libnvidia-ml.so.1
+# The path for the secondary symlink (.so).
+SHIM_SYMLINK_0 := $(SHIM_INSTALL_DIR)/libnvidia-ml.so
+
+# Paths for the fake device service.
 DEVICE_INSTALL_PATH := /usr/local/bin/fake-nvidia-device.sh
 SERVICE_FILE_PATH := /etc/systemd/system/fake-nvidia-device.service
 
 
 # --- Part 4: Build Rules ---
-
-# --- NVIDIA Driver Version Override (Optional) ---
-# Allows specifying an NVIDIA driver version to be embedded into the shim library.
-# This will replace the default version string in fake_nvml.c before compilation.
-#
-# Example usage:
-#   make NVIDIA_DRIVER_VERSION=470.82.01
-#
-# If NVIDIA_DRIVER_VERSION is not provided, the default version in the source file is used.
-# Note: This modifies the source file 'fake_nvml.c' in-place.
 
 # 'all' is the default target, which is executed when 'make' is run.
 # It depends on the kernel module and the shared library.
@@ -72,15 +83,20 @@ kernel_module:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 # Rule for building the shared library.
-# Now includes logic to optionally replace the driver version string.
+# Replaces the driver version string in the source file before compilation.
 # $@ represents the target file (libfake_nvml.so).
 # $^ represents all dependency files (fake_nvml.c).
 $(SHIM_TARGET): $(SHIM_SOURCE)
-	@if [ -n "$(NVIDIA_DRIVER_VERSION)" ]; then \
-		echo "Overriding NVIDIA driver version to $(NVIDIA_DRIVER_VERSION) in $(SHIM_SOURCE)..."; \
-		sed -i 's/535.104.05/$(NVIDIA_DRIVER_VERSION)/g' $(SHIM_SOURCE); \
-	fi
-	$(CC) $(SHIM_CFLAGS) -o $@ $^
+	@echo "Using NVIDIA driver version $(NVIDIA_DRIVER_VERSION) for build..."
+	# Create a temporary copy to avoid modifying the original source file if it's under version control.
+	cp $(SHIM_SOURCE) $(SHIM_SOURCE).tmp.c
+	# Replace the default version string with the specified NVIDIA_DRIVER_VERSION.
+	sed -i 's/535.104.05/$(NVIDIA_DRIVER_VERSION)/g' $(SHIM_SOURCE).tmp.c
+	# Compile using the temporary, modified source file.
+	$(CC) $(SHIM_CFLAGS) -o $@ $(SHIM_SOURCE).tmp.c
+	# Remove the temporary file.
+	rm $(SHIM_SOURCE).tmp.c
+
 
 # 'clean' target is used to delete all generated files.
 .PHONY: clean
@@ -99,44 +115,52 @@ clean:
 .PHONY: install
 install: all
 	@echo "Installing kernel module and shim library..."
-	# Create the destination directory for the kernel module if it doesn't exist.
+	# --- Kernel Module Installation ---
 	mkdir -p $(KMOD_INSTALL_PATH)
-	# Copy the kernel module to the system directory with proper permissions.
 	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
-	# Auto load the module on boot.
 	echo "fake_nvidia_driver" > /etc/modules-load.d/fake_nvidia_driver.conf
-	# Try to update the list of module dependencies, this may fail during docker build
 	depmod -a || true
-	# Copy the shared library to the system directory with proper permissions.
-	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH)
+
+	# --- Shim Library Installation ---
+	@echo "Installing shim library to $(SHIM_INSTALL_PATH_VERSIONED)..."
+	# Copy the shared library to the system directory with the versioned name.
+	install -m 755 $(SHIM_TARGET) $(SHIM_INSTALL_PATH_VERSIONED)
+	# Create the symbolic links. Use -f to overwrite existing links.
+	@echo "Creating symbolic links..."
+	ln -sf $(SHIM_INSTALL_PATH_VERSIONED) $(SHIM_SYMLINK_1)
+	ln -sf $(SHIM_SYMLINK_1) $(SHIM_SYMLINK_0)
 	# Update the dynamic linker's cache.
 	ldconfig
-	# Install the fake-nvidia-device service.
+
+	# --- Service Installation ---
 	install -m 755 fake-nvidia-device.sh $(DEVICE_INSTALL_PATH)
 	install -m 644 fake-nvidia-device.service $(SERVICE_FILE_PATH)
 	systemctl enable fake-nvidia-device.service
 	@echo "Installation complete."
+	@echo "Run 'sudo systemctl start fake-nvidia-device.service' to start the service."
 
 # 'uninstall' target to remove files from system directories.
 .PHONY: uninstall
 uninstall:
 	@echo "Uninstalling kernel module, shim library and service..."
-	# Stop and disable the fake-nvidia-device service.
+	# --- Service Uninstallation ---
 	systemctl stop fake-nvidia-device.service || true
 	systemctl disable fake-nvidia-device.service || true
-	# Remove the fake-nvidia-device service and script.
 	rm -f $(SERVICE_FILE_PATH)
 	rm -f $(DEVICE_INSTALL_PATH)
-	# Reload the systemd daemon to apply changes.
 	systemctl daemon-reload
-	# Remove the kernel module from the system directory.
+
+	# --- Kernel Module Uninstallation ---
 	rm -f $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
-	# Remove the auto-load configuration for the kernel module.
 	rm -f /etc/modules-load.d/fake_nvidia_driver.conf
-	# Update the list of module dependencies.
-	depmod -a
-	# Remove the shared library from the system directory.
-	rm -f $(SHIM_INSTALL_PATH)
+	depmod -a || true
+
+	# --- Shim Library Uninstallation ---
+	@echo "Removing shim library and symbolic links..."
+	# Remove the versioned library file and both symbolic links.
+	rm -f $(SHIM_INSTALL_PATH_VERSIONED)
+	rm -f $(SHIM_SYMLINK_1)
+	rm -f $(SHIM_SYMLINK_0)
 	# Update the dynamic linker's cache.
 	ldconfig
 	@echo "Uninstallation complete."
