@@ -52,9 +52,48 @@ NVIDIA_DRIVER_VERSION ?= 535.104.05
 # Destination for the kernel module. Using 'extra' is a common practice.
 KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
 
-# --- NEW: Define installation paths for the shim library and symlinks ---
-# Base directory for the NVIDIA library.
-SHIM_INSTALL_DIR := /usr/lib/x86_64-linux-gnu
+# --- OPTIMIZED: Multi-layered library path detection ---
+# This robust logic determines the correct library installation directory.
+# It allows user override as the highest priority.
+#
+# To manually specify the library path, run:
+#   make install LIBDIR=/path/to/your/libs
+
+# Layer 1: Check if the user has manually specified LIBDIR.
+ifeq ($(LIBDIR),)
+  # Layer 2: Query the compiler for its 'multi-os-directory'. This is the preferred method.
+  # - On Debian/Ubuntu (x86_64), returns: ../lib/x86_64-linux-gnu
+  # - On CentOS/RHEL (x86_64), returns: .
+  # - On Debian (aarch64), returns: ../lib/aarch64-linux-gnu
+  # This is architecture-aware and distribution-aware.
+  MULTI_OS_DIR_RAW := $(strip $(shell $(CC) -print-multi-os-directory 2>/dev/null))
+
+  # Case A: Compiler returns '.' (typical for CentOS/RHEL).
+  ifeq ($(MULTI_OS_DIR_RAW),.)
+    SHIM_INSTALL_DIR := /usr/lib64
+  # Case B: Compiler returns a relative path (typical for Debian/Ubuntu).
+  else ifneq ($(MULTI_OS_DIR_RAW),)
+    # The output is like '../lib/x86_64-linux-gnu'. We construct the absolute path.
+    # Using patsubst is a pure-make way to remove the leading '../'.
+    SHIM_INSTALL_DIR := /usr/$(patsubst ../,%,$(MULTI_OS_DIR_RAW))
+  # Case C: Compiler query failed or returned nothing. Use fallback logic.
+  else
+    # Layer 3: Fallback to checking well-known directory paths.
+    ifneq ($(shell test -d /usr/lib/x86_64-linux-gnu && echo YES),)
+      SHIM_INSTALL_DIR := /usr/lib/x86_64-linux-gnu
+    else ifneq ($(shell test -d /usr/lib64 && echo YES),)
+      SHIM_INSTALL_DIR := /usr/lib64
+    else
+      # Layer 4: Final fallback to a generic path.
+      SHIM_INSTALL_DIR := /usr/lib
+    endif
+  endif
+else
+  # Use the user-provided directory.
+  SHIM_INSTALL_DIR := $(LIBDIR)
+endif
+
+
 # The full path for the versioned library file.
 SHIM_INSTALL_PATH_VERSIONED := $(SHIM_INSTALL_DIR)/libnvidia-ml.so.$(NVIDIA_DRIVER_VERSION)
 # The path for the primary symlink (.so.1).
@@ -76,6 +115,7 @@ all: kernel_module $(SHIM_TARGET)
 	@echo "Build complete for kernel version $(KVERSION). Products:"
 	@echo "  - Kernel Module: fake_nvidia_driver.ko"
 	@echo "  - LD_PRELOAD Shim: $(SHIM_TARGET)"
+	@echo "Detected library installation directory: $(SHIM_INSTALL_DIR)"
 
 # Rule for building the kernel module.
 .PHONY: kernel_module
