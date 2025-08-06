@@ -159,7 +159,9 @@ install: all
 	mkdir -p $(KMOD_INSTALL_PATH)
 	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
 	echo "fake_nvidia_driver" > /etc/modules-load.d/fake_nvidia_driver.conf
-	depmod -a || true
+	# Explicitly specify the kernel version for depmod. This is essential when building
+	# in a container where the running kernel differs from the target KERNEL_RELEASE.
+	depmod -a $(KVERSION) || true
 
 	# --- Shim Library Installation ---
 	@echo "Installing shim library to $(SHIM_INSTALL_PATH_VERSIONED)..."
