@@ -1,5 +1,7 @@
 # fake-nvidia: test nvidia-container-toolkit without gpu device
 
+别称：皮假客（由网友 `WWL=WWL+1` 命名）
+
 ## why
 
 * we can use it to reproduce nvidia-container-toolkit vulnerability without gpu device, e.g.:
