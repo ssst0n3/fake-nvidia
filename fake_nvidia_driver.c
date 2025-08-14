@@ -2,6 +2,7 @@
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
+#include <linux/version.h>
 
 // We just need a pointer to the root of the directory we create.
 static struct proc_dir_entry *g_proc_nvidia_dir = NULL;
@@ -15,11 +16,17 @@ static ssize_t proc_version_read(struct file *file, char __user *usr_buf, size_t
 }
 
 // Bind the read operation to the function.
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
 static const struct proc_ops g_version_fops = {
     .proc_read = proc_version_read,
 };
+#else
+static const struct file_operations g_version_fops = {
+    .owner = THIS_MODULE,
+    .read  = proc_version_read,
+};
+#endif
 
-// Module initialization function.
 static int __init fake_nvidia_init(void) {
     struct proc_dir_entry *gpus_dir;
 
@@ -62,5 +69,5 @@ module_init(fake_nvidia_init);
 module_exit(fake_nvidia_exit);
 
 MODULE_LICENSE("MIT");
-MODULE_AUTHOR("ssst0n3 with gemini-2.5-pro");
+MODULE_AUTHOR("ssst0n3 with gemini-2.5-pro, patched for multi-kernel by ChatGPT");
 MODULE_DESCRIPTION("A fake driver with the correct GPU PCI path for nvidia-container-cli.");
