@@ -435,6 +435,46 @@ nvmlReturn_t nvmlDeviceGetMigDeviceHandleByIndex(nvmlDevice_t device, unsigned i
     LOG(__func__, "exit, no MIG devices (NOT_FOUND)");
     return NVML_ERROR_NOT_FOUND;
 }
+
+// ******************** FIX: ADDED REMAINING MIG SYMBOLS (toolkit >= 1.19.0) ********************
+// libnvidia-sandboxutils.so (shipped with nvidia-container-toolkit >= 1.19.0) dlsym's these
+// from libnvidia-ml.so.1. Without them `nvidia-ctk cdi generate` printed:
+//   ERROR: Couldn't load symbol: ... undefined symbol: nvmlDeviceGetDeviceHandleFromMigDeviceHandle
+//   Failed to init nvsandboxutils: ERROR_LIBRARY_LOAD; ignoring
+// (non-fatal — sandboxutils init failure is ignored and CDI generation still succeeds —
+// but it polluted the output). The fake Tesla T4 does not support MIG, so there are no MIG
+// device handles and no GPU/compute instances; all three return NVML_ERROR_NOT_FOUND.
+// Signatures per nvml.h:
+//   nvmlReturn_t nvmlDeviceGetDeviceHandleFromMigDeviceHandle(nvmlDevice_t migDevice, nvmlDevice_t *device);
+//   nvmlReturn_t nvmlDeviceGetComputeInstanceId(nvmlDevice_t device, unsigned int *id);
+//   nvmlReturn_t nvmlDeviceGetGpuInstanceId(nvmlDevice_t device, unsigned int *id);
+nvmlReturn_t nvmlDeviceGetDeviceHandleFromMigDeviceHandle(nvmlDevice_t migDevice, nvmlDevice_t *device) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (device == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    (void)migDevice; // no MIG device handles exist on fake GPUs.
+    LOG(__func__, "exit, no MIG devices (NOT_FOUND)");
+    return NVML_ERROR_NOT_FOUND;
+}
+
+nvmlReturn_t nvmlDeviceGetGpuInstanceId(nvmlDevice_t device, unsigned int *id) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (id == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    (void)device; // fake GPUs have no GPU instances.
+    LOG(__func__, "exit, no GPU instances (NOT_FOUND)");
+    return NVML_ERROR_NOT_FOUND;
+}
+
+nvmlReturn_t nvmlDeviceGetComputeInstanceId(nvmlDevice_t device, unsigned int *id) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (id == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    (void)device; // fake GPUs have no compute instances.
+    LOG(__func__, "exit, no compute instances (NOT_FOUND)");
+    return NVML_ERROR_NOT_FOUND;
+}
+// ********************************************************************************************
 // ********************************************************************************************
 
 // ******************** ENHANCEMENT: ADDED COMMON FUNCTION FOR ROBUSTNESS ********************
