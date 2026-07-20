@@ -405,7 +405,7 @@ nvmlReturn_t nvmlDeviceGetMigMode(nvmlDevice_t device, unsigned int *currentMode
     LOG(__func__, "enter");
     if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
     if (currentMode == NULL || pendingMode == NULL) return NVML_ERROR_INVALID_ARGUMENT;
-    
+
     // MIG is not enabled.
     *currentMode = NVML_FEATURE_DISABLED;
     *pendingMode = NVML_FEATURE_DISABLED;
@@ -413,6 +413,29 @@ nvmlReturn_t nvmlDeviceGetMigMode(nvmlDevice_t device, unsigned int *currentMode
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
+
+// ******************** FIX: ADDED MISSING MIG SYMBOL (toolkit >= 1.19.0) ********************
+// libnvidia-sandboxutils.so (shipped with nvidia-container-toolkit >= 1.19.0) dlopen's
+// libnvidia-ml.so.1 and dlsym's nvmlDeviceGetMigDeviceHandleByIndex. The stub did not
+// export it, so `nvidia-ctk cdi generate` printed:
+//   ERROR: Couldn't load symbol: ... undefined symbol: nvmlDeviceGetMigDeviceHandleByIndex
+//   Failed to init nvsandboxutils: ERROR_LIBRARY_LOAD; ignoring
+// (non-fatal — sandboxutils init failure is ignored and CDI generation still succeeds —
+// but it pollutes the output). The fake Tesla T4 does not support MIG, so there are no
+// MIG devices to enumerate; return NVML_ERROR_NOT_FOUND for any index. Signature per nvml.h:
+//   nvmlReturn_t nvmlDeviceGetMigDeviceHandleByIndex(nvmlDevice_t device,
+//                                                    unsigned int index,
+//                                                    nvmlDevice_t *migDevice);
+nvmlReturn_t nvmlDeviceGetMigDeviceHandleByIndex(nvmlDevice_t device, unsigned int index,
+                                                 nvmlDevice_t *migDevice) {
+    LOG(__func__, "enter, index=%u", index);
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (migDevice == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    (void)device; // fake GPUs have no MIG devices; device validity is not checked further.
+    LOG(__func__, "exit, no MIG devices (NOT_FOUND)");
+    return NVML_ERROR_NOT_FOUND;
+}
+// ********************************************************************************************
 
 // ******************** ENHANCEMENT: ADDED COMMON FUNCTION FOR ROBUSTNESS ********************
 nvmlReturn_t nvmlDeviceGetMemoryInfo(nvmlDevice_t device, nvmlMemory_t *memory) {
