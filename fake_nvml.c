@@ -144,7 +144,15 @@ static int g_initialized = 0;
 
 nvmlReturn_t nvmlInit_v2(void) {
     LOG(__func__, "enter");
-    if (g_initialized) { return NVML_ERROR_ALREADY_INITIALIZED; }
+    // Idempotent: the real libnvidia-ml returns NVML_SUCCESS when called again
+    // without an intervening nvmlShutdown. libnvidia-sandboxutils.so (toolkit
+    // >= 1.19.0) calls nvmlInit twice in a row; returning ALREADY_INITIALIZED
+    // made it fail with ERROR_NVML_LIB_CALL. Re-initialization is a no-op here
+    // because the fake GPU state is static.
+    if (g_initialized) {
+        LOG(__func__, "exit, already initialized (idempotent SUCCESS)");
+        return NVML_SUCCESS;
+    }
     for (int i = 0; i < FAKE_GPU_COUNT; ++i) {
         g_fake_gpus[i].index = i;
         snprintf(g_fake_gpus[i].name, NVML_DEVICE_NAME_BUFFER_SIZE, "%s", FAKE_GPU_NAME);
