@@ -71,6 +71,29 @@ typedef struct nvmlMemory_st {
     unsigned long long used;
 } nvmlMemory_t;
 
+// --- NVML UUID struct (consumed by nvmlDeviceGetHandleByUUIDV; from nvml.h) ---
+#define NVML_DEVICE_UUID_ASCII_LEN 41
+#define NVML_DEVICE_UUID_BINARY_LEN 16
+
+typedef enum {
+    NVML_UUID_TYPE_NONE = 0,
+    NVML_UUID_TYPE_ASCII = 1,
+    NVML_UUID_TYPE_BINARY = 2
+} nvmlUUIDType_t;
+
+typedef union {
+    char str[NVML_DEVICE_UUID_ASCII_LEN];
+    unsigned char bytes[NVML_DEVICE_UUID_BINARY_LEN];
+} nvmlUUIDValue_t;
+
+typedef struct {
+    unsigned int version;
+    unsigned int type;
+    nvmlUUIDValue_t value;
+} nvmlUUID_v1_t;
+
+typedef nvmlUUID_v1_t nvmlUUID_t;
+
 // --- Logging Utility ---
 #define LOG(func_name, msg, ...)                                         \
     do {                                                                 \
@@ -181,6 +204,52 @@ nvmlReturn_t nvmlDeviceGetHandleByIndex_v2(unsigned int index, nvmlDevice_t* dev
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
+
+// ******************** FIX: ADDED MISSING SYMBOLS (toolkit >= 1.19.0) ********************
+// nvidia-container-toolkit / libnvidia-container >= 1.19.0 reference these as undefined
+// symbols (U) and resolve them from libnvidia-ml.so at runtime via cgo. Without them the
+// toolkit's nvidia-ctk / nvidia-container-runtime-hook abort with:
+//   symbol lookup error: undefined symbol: nvmlDeviceGetHandleByUUID
+// Both perform the reverse of nvmlDeviceGetUUID: map a UUID back to a fake GPU handle.
+//   - nvmlDeviceGetHandleByUUID  : public nvml.h API, UUID given as a C string.
+//   - nvmlDeviceGetHandleByUUIDV : versioned variant (capital V, not _v2) absent from older
+//     public headers but exported by the real driver; UUID given as a nvmlUUID_t struct whose
+//     value union holds an ASCII string or raw bytes (see nvmlUUID_t above).
+// Reverse-map an ASCII UUID string to its fake GPU handle (shared by the two APIs below).
+static nvmlReturn_t fake_lookup_handle_by_uuid(const char *uuid, nvmlDevice_t *device) {
+    for (int i = 0; i < FAKE_GPU_COUNT; ++i) {
+        if (strcmp(uuid, g_fake_gpus[i].uuid) == 0) {
+            *device = g_fake_gpus[i].handle;
+            return NVML_SUCCESS;
+        }
+    }
+    return NVML_ERROR_NOT_FOUND;
+}
+
+nvmlReturn_t nvmlDeviceGetHandleByUUID(const char *uuid, nvmlDevice_t *device) {
+    LOG(__func__, "enter, uuid=%s", uuid ? uuid : "(null)");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (uuid == NULL || device == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    nvmlReturn_t result = fake_lookup_handle_by_uuid(uuid, device);
+    LOG(__func__, "%s", result == NVML_SUCCESS ? "exit, matched" : "exit, UUID not found");
+    return result;
+}
+
+nvmlReturn_t nvmlDeviceGetHandleByUUIDV(const nvmlUUID_t *uuid, nvmlDevice_t *device) {
+    LOG(__func__, "enter, uuid type=%u", uuid ? uuid->type : 0u);
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (uuid == NULL || device == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    // The UUID value is a union: ASCII str[41] | binary bytes[16]. Our fake GPUs only carry
+    // ASCII UUIDs ("GPU-<i>-FAKE-UUID"). Copy value.str into a NUL-terminated buffer so a
+    // non-ASCII (binary) UUID is compared safely and simply cannot match.
+    char ascii[NVML_DEVICE_UUID_ASCII_LEN];
+    memcpy(ascii, uuid->value.str, NVML_DEVICE_UUID_ASCII_LEN);
+    ascii[NVML_DEVICE_UUID_ASCII_LEN - 1] = '\0';
+    nvmlReturn_t result = fake_lookup_handle_by_uuid(ascii, device);
+    LOG(__func__, "%s", result == NVML_SUCCESS ? "exit, matched" : "exit, UUID not found");
+    return result;
+}
+// ******************************************************************************************
 
 nvmlReturn_t nvmlDeviceGetName(nvmlDevice_t device, char* name, unsigned int length) {
     LOG(__func__, "enter");
