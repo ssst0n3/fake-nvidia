@@ -65,6 +65,22 @@ typedef struct nvmlPciInfo_st {
     unsigned int pciSubSystemId;
 } nvmlPciInfo_t;
 
+// --- NVML extended PCI info (consumed by nvmlDeviceGetPciInfoExt; from nvml.h) ---
+// Distinct from nvmlPciInfo_t: carries a version field and PCI base/sub class codes.
+typedef struct {
+    unsigned int version;
+    unsigned int domain;
+    unsigned int bus;
+    unsigned int device;
+    unsigned int pciDeviceId;
+    unsigned int pciSubSystemId;
+    unsigned int baseClass;
+    unsigned int subClass;
+    char busId[NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE];
+} nvmlPciInfoExt_v1_t;
+
+typedef nvmlPciInfoExt_v1_t nvmlPciInfoExt_t;
+
 typedef struct nvmlMemory_st {
     unsigned long long total;
     unsigned long long free;
@@ -277,6 +293,56 @@ nvmlReturn_t nvmlDeviceGetPciInfo(nvmlDevice_t device, nvmlPciInfo_t* pci) {
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
+
+// ******************** FIX: ADDED MISSING PCI SYMBOLS (toolkit >= 1.19.0) ********************
+// nvidia-container-toolkit / libnvidia-container >= 1.19.0 reference these as undefined
+// symbols (U) and resolve them from libnvidia-ml.so via cgo. Without them every
+// `docker run --runtime=nvidia --gpus=all ...` prints:
+//   Couldn't load symbol: ... undefined symbol: nvmlDeviceGetPciInfo_v3
+// (non-fatal, but noisy). All three fill the fake GPU's PCI info, consistent with
+// nvmlDeviceGetPciInfo above. Per nvml.h:
+//   - nvmlDeviceGetPciInfo_v2 / _v3 take nvmlPciInfo_t* (same struct as the base API;
+//     _v3 is the current default, aliased to nvmlDeviceGetPciInfo by the header).
+//   - nvmlDeviceGetPciInfoExt takes the distinct nvmlPciInfoExt_t* (versioned struct with
+//     PCI base/sub class codes); we leave baseClass/subClass zero and do not touch the
+//     caller's version field.
+nvmlReturn_t nvmlDeviceGetPciInfo_v2(nvmlDevice_t device, nvmlPciInfo_t* pci) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    fakeGpu_t* gpu = (fakeGpu_t*)device;
+    memcpy(pci, &gpu->pci, sizeof(nvmlPciInfo_t));
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+
+nvmlReturn_t nvmlDeviceGetPciInfo_v3(nvmlDevice_t device, nvmlPciInfo_t* pci) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    fakeGpu_t* gpu = (fakeGpu_t*)device;
+    memcpy(pci, &gpu->pci, sizeof(nvmlPciInfo_t));
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+
+nvmlReturn_t nvmlDeviceGetPciInfoExt(nvmlDevice_t device, nvmlPciInfoExt_t* pci) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (pci == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    fakeGpu_t* gpu = (fakeGpu_t*)device;
+    // Preserve the caller-set version field; fill the rest from the fake GPU.
+    unsigned int version = pci->version;
+    memset(pci, 0, sizeof(nvmlPciInfoExt_t));
+    pci->version = version;
+    pci->domain = gpu->pci.domain;
+    pci->bus = gpu->pci.bus;
+    pci->device = gpu->pci.device;
+    pci->pciDeviceId = gpu->pci.pciDeviceId;
+    pci->pciSubSystemId = gpu->pci.pciSubSystemId;
+    snprintf(pci->busId, NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE, "%s", gpu->pci.busId);
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+// ********************************************************************************************
 
 nvmlReturn_t nvmlDeviceGetCudaComputeCapability(nvmlDevice_t device, int *major, int *minor) {
     LOG(__func__, "enter");
