@@ -58,34 +58,51 @@ KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
 #
 # To manually specify the library path, run:
 #   make install LIBDIR=/path/to/your/libs
+#
+# Detection order (each layer only acts if the previous yielded nothing):
+#   1. LIBDIR override (highest priority).
+#   2. Dynamic linker resolution of the already-installed real driver
+#      `libnvidia-ml.so.1` (authoritative: the loader is the consumer we
+#      must shadow). Works on Debian/Ubuntu (multiarch) and RHEL (/usr/lib64).
+#   3. Existence-ordered check of well-known multiarch directories.
+#   4. `$(CC) -print-multi-os-directory` (last resort; unreliable on some
+#      toolchains where it returns a degenerate `../lib` with no arch suffix).
 
 # Layer 1: Check if the user has manually specified LIBDIR.
 ifeq ($(LIBDIR),)
-  # Layer 2: Query the compiler for its 'multi-os-directory'. This is the preferred method.
-  # - On Debian/Ubuntu (x86_64), returns: ../lib/x86_64-linux-gnu
-  # - On CentOS/RHEL (x86_64), returns: .
-  # - On Debian (aarch64), returns: ../lib/aarch64-linux-gnu
-  # This is architecture-aware and distribution-aware.
-  MULTI_OS_DIR_RAW := $(strip $(shell $(CC) -print-multi-os-directory 2>/dev/null))
+  # Layer 2: Ask the dynamic linker where libnvidia-ml.so.1 currently resolves.
+  # The real driver library is installed before `make install` runs, so its
+  # location in the ldconfig cache is the directory we must place the stub in.
+  LOADER_NVML_LINE := $(lastword $(shell ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 '))
+  LOADER_NVML_DIR := $(patsubst %/,%,$(dir $(LOADER_NVML_LINE)))
 
-  # Case A: Compiler returns '.' (typical for CentOS/RHEL).
-  ifeq ($(MULTI_OS_DIR_RAW),.)
-    SHIM_INSTALL_DIR := /usr/lib64
-  # Case B: Compiler returns a relative path (typical for Debian/Ubuntu).
-  else ifneq ($(MULTI_OS_DIR_RAW),)
-    # The output is like '../lib/x86_64-linux-gnu'. We construct the absolute path.
-    # Using patsubst is a pure-make way to remove the leading '../'.
-    SHIM_INSTALL_DIR := /usr/$(patsubst ../,%,$(MULTI_OS_DIR_RAW))
-  # Case C: Compiler query failed or returned nothing. Use fallback logic.
+  ifneq ($(LOADER_NVML_DIR),)
+    SHIM_INSTALL_DIR := $(LOADER_NVML_DIR)
   else
     # Layer 3: Fallback to checking well-known directory paths.
     ifneq ($(shell test -d /usr/lib/x86_64-linux-gnu && echo YES),)
       SHIM_INSTALL_DIR := /usr/lib/x86_64-linux-gnu
+    else ifneq ($(shell test -d /usr/lib/aarch64-linux-gnu && echo YES),)
+      SHIM_INSTALL_DIR := /usr/lib/aarch64-linux-gnu
     else ifneq ($(shell test -d /usr/lib64 && echo YES),)
       SHIM_INSTALL_DIR := /usr/lib64
     else
-      # Layer 4: Final fallback to a generic path.
-      SHIM_INSTALL_DIR := /usr/lib
+      # Layer 4: Final fallback via the compiler's multi-os-directory query.
+      # - On Debian/Ubuntu (x86_64), returns: ../lib/x86_64-linux-gnu
+      # - On CentOS/RHEL (x86_64), returns: .
+      # - On Debian (aarch64), returns: ../lib/aarch64-linux-gnu
+      MULTI_OS_DIR_RAW := $(strip $(shell $(CC) -print-multi-os-directory 2>/dev/null))
+
+      ifeq ($(MULTI_OS_DIR_RAW),.)
+        SHIM_INSTALL_DIR := /usr/lib64
+      else ifneq ($(MULTI_OS_DIR_RAW),)
+        # The output is like '../lib/x86_64-linux-gnu'. Strip the leading '../'
+        # with a pattern that carries the % wildcard (a pattern without % only
+        # matches the whole word '../', never a '../' prefix).
+        SHIM_INSTALL_DIR := /usr/$(patsubst ../%,%,$(MULTI_OS_DIR_RAW))
+      else
+        SHIM_INSTALL_DIR := /usr/lib
+      endif
     endif
   endif
 else
@@ -173,6 +190,21 @@ install: all
 	ln -sf $(SHIM_SYMLINK_1) $(SHIM_SYMLINK_0)
 	# Update the dynamic linker's cache.
 	ldconfig
+
+	# --- Post-install sanity check (non-fatal) ---
+	# Verify the dynamic linker now resolves libnvidia-ml.so.1 into the
+	# directory we installed the stub into. A mismatch means the stub is
+	# shadowed by (or placed away from) the real driver library and GPU
+	# containers will likely fail with "Driver Not Loaded". Warn loudly but
+	# do not fail the install: the user may have intentionally used LIBDIR.
+	@_resolved=$$(ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | tail -n1 | sed -n 's/.*=> \(.*\)/\1/p' | xargs -I{} dirname {} 2>/dev/null); \
+	if [ -n "$$_resolved" ] && [ "$$_resolved" != "$(SHIM_INSTALL_DIR)" ]; then \
+		echo ""; \
+		echo "WARNING: libnvidia-ml.so.1 resolves to $$_resolved"; \
+		echo "         but the stub was installed to $(SHIM_INSTALL_DIR)."; \
+		echo "         The stub may be shadowed by the real driver library."; \
+		echo "         Re-run with LIBDIR=$$_resolved if GPU containers fail."; \
+	fi
 
 	# --- Service Installation ---
 	install -m 755 fake-nvidia-device.sh $(DEVICE_INSTALL_PATH)
