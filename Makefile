@@ -62,18 +62,34 @@ KMOD_INSTALL_PATH := /lib/modules/$(KVERSION)/kernel/drivers/extra
 # Detection order (each layer only acts if the previous yielded nothing):
 #   1. LIBDIR override (highest priority).
 #   2. Dynamic linker resolution of the already-installed real driver
-#      `libnvidia-ml.so.1` (authoritative: the loader is the consumer we
-#      must shadow). Works on Debian/Ubuntu (multiarch) and RHEL (/usr/lib64).
+#      `libnvidia-ml.so.1` for the *native* architecture (authoritative:
+#      the loader is the consumer we must shadow). Works on Debian/Ubuntu
+#      (multiarch) and RHEL (/usr/lib64). Compat32 (i386) and x32 entries
+#      in `ldconfig -p` are filtered out so the x86_64 stub is never written
+#      into an i386 directory.
 #   3. Existence-ordered check of well-known multiarch directories.
 #   4. `$(CC) -print-multi-os-directory` (last resort; unreliable on some
 #      toolchains where it returns a degenerate `../lib` with no arch suffix).
+#
+# The native architecture is derived from the compiler target triple
+# `$(CC) -dumpmachine` (e.g. x86_64-linux-gnu -> x86-64, aarch64-linux-gnu
+# -> aarch64), NOT from `uname -m`: under BuildKit cross-arch builds `uname`
+# reflects the host kernel, not the image toolchain, and would pick the
+# wrong ldconfig entry.
+
+# Native ldconfig arch tag, derived from the compiler target triple.
+# x86_64-* -> x86-64, aarch64-* -> aarch64, others pass through unchanged.
+NATIVE_ARCH_TAG := $(patsubst aarch64-%,aarch64,$(patsubst x86_64-%,x86-64,$(shell $(CC) -dumpmachine 2>/dev/null)))
 
 # Layer 1: Check if the user has manually specified LIBDIR.
 ifeq ($(LIBDIR),)
-  # Layer 2: Ask the dynamic linker where libnvidia-ml.so.1 currently resolves.
-  # The real driver library is installed before `make install` runs, so its
-  # location in the ldconfig cache is the directory we must place the stub in.
-  LOADER_NVML_LINE := $(lastword $(shell ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 '))
+  # Layer 2: Ask the dynamic linker where the *native* libnvidia-ml.so.1
+  # currently resolves. The real driver library is installed before
+  # `make install` runs, so its location in the ldconfig cache is the
+  # directory we must place the stub in. Filter to the native arch tag
+  # (e.g. ",x86-64") to ignore compat32 (libc6) and x32 (libc6,x32) entries
+  # that would otherwise sort after the native one and be picked by lastword.
+  LOADER_NVML_LINE := $(lastword $(shell ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | grep ',$(NATIVE_ARCH_TAG)'))
   LOADER_NVML_DIR := $(patsubst %/,%,$(dir $(LOADER_NVML_LINE)))
 
   ifneq ($(LOADER_NVML_DIR),)
@@ -191,19 +207,26 @@ install: all
 	# Update the dynamic linker's cache.
 	ldconfig
 
-	# --- Post-install sanity check (non-fatal) ---
-	# Verify the dynamic linker now resolves libnvidia-ml.so.1 into the
-	# directory we installed the stub into. A mismatch means the stub is
-	# shadowed by (or placed away from) the real driver library and GPU
-	# containers will likely fail with "Driver Not Loaded". Warn loudly but
-	# do not fail the install: the user may have intentionally used LIBDIR.
-	@_resolved=$$(ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | tail -n1 | sed -n 's/.*=> \(.*\)/\1/p' | xargs -I{} dirname {} 2>/dev/null); \
+	# --- Post-install sanity check ---
+	# Verify the dynamic linker now resolves the *native* libnvidia-ml.so.1
+	# into the directory we installed the stub into. Uses the SAME native-arch
+	# filter as the detection (Layer 2) so the two cannot disagree on which
+	# entry is authoritative. A mismatch means the stub is shadowed by (or
+	# placed away from) the real driver library and GPU containers will likely
+	# fail with "Driver Not Loaded".
+	#
+	# When LIBDIR was NOT set (auto-detection), a mismatch is a real regression
+	# and fails the install. When LIBDIR was set explicitly, the user asserted
+	# the directory, so only warn (they may intentionally install off the
+	# loader path, e.g. for LD_PRELOAD-only use).
+	@_resolved=$$(ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | grep ',$(NATIVE_ARCH_TAG)' | tail -n1 | sed -n 's/.*=> \(.*\)/\1/p' | xargs -I{} dirname {} 2>/dev/null); \
 	if [ -n "$$_resolved" ] && [ "$$_resolved" != "$(SHIM_INSTALL_DIR)" ]; then \
 		echo ""; \
 		echo "WARNING: libnvidia-ml.so.1 resolves to $$_resolved"; \
 		echo "         but the stub was installed to $(SHIM_INSTALL_DIR)."; \
 		echo "         The stub may be shadowed by the real driver library."; \
 		echo "         Re-run with LIBDIR=$$_resolved if GPU containers fail."; \
+		if [ -z "$(LIBDIR)" ]; then exit 1; fi; \
 	fi
 
 	# --- Service Installation ---
