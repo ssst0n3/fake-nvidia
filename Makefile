@@ -17,7 +17,26 @@ endif
 
 # --- Part 1: Kernel Module Configuration ---
 # 'obj-m' tells the kernel build system that we want to build a module.
+#
+# The module is built under the name $(MODULE_NAME) (default: nvidia) so the
+# kernel registers it as `nvidia`. This is what nvidia-container-toolkit
+# 1.17.8+'s CDI-refresh identity checks look for:
+#   - udev rule  KERNEL=="nvidia|nvidia_current"  (needs the *loaded* name)
+#   - ExecCondition grep "/(nvidia|nvidia-current)[.]ko" modules.dep
+# Both are satisfied by a single rename.
+#
+# The source file stays fake_nvidia_driver.c; kbuild maps it into the module
+# via the <name>-y list. The switch MUST be branched: setting
+# MODULE_NAME=fake_nvidia_driver with a one-liner `obj-m += $(MODULE_NAME).o`
+# plus `$(MODULE_NAME)-y := fake_nvidia_driver.o` would self-reference (kbuild
+# rejects), so the v0.8.3 single-object form is kept in that branch.
+MODULE_NAME ?= nvidia
+ifeq ($(MODULE_NAME),fake_nvidia_driver)
 obj-m += fake_nvidia_driver.o
+else
+obj-m += $(MODULE_NAME).o
+$(MODULE_NAME)-y := fake_nvidia_driver.o
+endif
 
 # Path to the kernel source/header files, now using the configurable KVERSION.
 KDIR := /lib/modules/$(KVERSION)/build
@@ -146,7 +165,7 @@ SERVICE_FILE_PATH := /etc/systemd/system/fake-nvidia-device.service
 .PHONY: all
 all: kernel_module $(SHIM_TARGET)
 	@echo "Build complete for kernel version $(KVERSION). Products:"
-	@echo "  - Kernel Module: fake_nvidia_driver.ko"
+	@echo "  - Kernel Module: $(MODULE_NAME).ko (source: fake_nvidia_driver.c)"
 	@echo "  - LD_PRELOAD Shim: $(SHIM_TARGET)"
 	@echo "Detected library installation directory: $(SHIM_INSTALL_DIR)"
 
@@ -190,11 +209,22 @@ install: all
 	@echo "Installing kernel module and shim library..."
 	# --- Kernel Module Installation ---
 	mkdir -p $(KMOD_INSTALL_PATH)
-	install -m 644 fake_nvidia_driver.ko $(KMOD_INSTALL_PATH)/
-	echo "fake_nvidia_driver" > /etc/modules-load.d/fake_nvidia_driver.conf
+	# Migration: remove v0.8.3 leftovers (stale .ko + modules-load.d conf)
+	# so systemd-modules-load does not keep loading the old name and modules.dep
+	# does not carry two entries. Only when the new name differs from the old.
+ifneq ($(MODULE_NAME),fake_nvidia_driver)
+	rm -f $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
+	rm -f /etc/modules-load.d/fake_nvidia_driver.conf
+endif
+	install -m 644 $(MODULE_NAME).ko $(KMOD_INSTALL_PATH)/
+	echo "$(MODULE_NAME)" > /etc/modules-load.d/$(MODULE_NAME).conf
 	# Explicitly specify the kernel version for depmod. This is essential when building
 	# in a container where the running kernel differs from the target KERNEL_RELEASE.
-	depmod -a $(KVERSION) || true
+	# Fail loudly: depmod is now load-bearing. nvidia-cdi-refresh.service's
+	# ExecCondition greps modules.dep, so a silent depmod failure would
+	# reproduce the exact symptom this feature is meant to fix (the service
+	# skipping CDI generation on every boot).
+	depmod -a $(KVERSION)
 
 	# --- Shim Library Installation ---
 	@echo "Installing shim library to $(SHIM_INSTALL_PATH_VERSIONED)..."
@@ -248,8 +278,10 @@ uninstall:
 	systemctl daemon-reload
 
 	# --- Kernel Module Uninstallation ---
-	rm -f $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
-	rm -f /etc/modules-load.d/fake_nvidia_driver.conf
+	# Clean both the current $(MODULE_NAME) artifacts and any v0.8.3 leftovers,
+	# so an upgrade from any version converges to a clean state.
+	rm -f $(KMOD_INSTALL_PATH)/$(MODULE_NAME).ko $(KMOD_INSTALL_PATH)/fake_nvidia_driver.ko
+	rm -f /etc/modules-load.d/$(MODULE_NAME).conf /etc/modules-load.d/fake_nvidia_driver.conf
 	depmod -a || true
 
 	# --- Shim Library Uninstallation ---
