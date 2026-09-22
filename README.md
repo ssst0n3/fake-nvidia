@@ -7,6 +7,18 @@
 * we can use it to reproduce nvidia-container-toolkit vulnerability without gpu device, e.g.:
   * [cve-2025-23266](https://github.com/ssst0n3/docker_archive/tree/main/vul/cve-2025-23266)
 
+## CDI auto-refresh compatibility (v0.9.0)
+
+Since v0.9.0 the kernel module is built under the name `nvidia` (previously `fake_nvidia_driver`) so that `nvidia-container-toolkit` >= 1.17.8's `nvidia-cdi-refresh` mechanism recognizes the host as having an NVIDIA driver: on a fresh boot the CDI spec at `/var/run/cdi/nvidia.yaml` is generated automatically, and `docker run --runtime=nvidia --device nvidia.com/gpu=all ...` works without a manual `nvidia-ctk cdi generate`.
+
+Escape hatch — keep the v0.8.3 module name:
+
+```shell
+make MODULE_NAME=fake_nvidia_driver
+```
+
+Upgrading from v0.8.3: run `make uninstall` first (it cleans both old and new artifacts), then `make install`. `make install` also removes stale v0.8.3 leftovers when `MODULE_NAME=nvidia`.
+
 ## quick-start
 
 ```shell
@@ -16,7 +28,7 @@ git clone https://github.com/ssst0n3/fake-nvidia
 cd fake-nvidia
 make install
 ./fake-nvidia-device.sh
-modprobe fake_nvidia_driver
+modprobe nvidia
 ```
 
 ## usage
@@ -40,9 +52,9 @@ root@localhost:~# cd fake-nvidia
 root@localhost:~/fake-nvidia# make install
 root@localhost:~/fake-nvidia# cd
 root@localhost:~# systemctl start fake-nvidia-device
-root@localhost:~# modprobe fake_nvidia_driver
+root@localhost:~# modprobe nvidia
 root@localhost:~# lsmod |grep nvidia
-fake_nvidia_driver     12288  0
+nvidia                12288  0
 root@localhost:~# ls -lah /usr/local/lib/libnvidia-ml.so.1
 -rwxr-xr-x 1 root root 21K Jul 21 01:46 /usr/local/lib/libnvidia-ml.so.1
 ```
