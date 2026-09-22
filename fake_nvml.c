@@ -204,6 +204,57 @@ nvmlReturn_t nvmlSystemGetDriverVersion(char* version, unsigned int length) {
     return NVML_SUCCESS;
 }
 
+// ******************** FIX: ADDED MISSING SYMBOLS (real nvidia-smi compatibility) ********************
+// The real nvidia-smi (575.57.08 userspace) dlsym's
+// nvmlInitWithFlags as its init entry — NOT nvmlInit/nvmlInit_v2 — and aborts with
+// "Failed to initialize NVML: Function Not Found" when it is absent (v0.8.3 stub).
+// Identified empirically: a bulk-stub probe of all 254 missing symbols showed the -L
+// path calls exactly nvmlInitWithFlags then nvmlInternalGetExportTable before the
+// device enumeration (which uses the already-implemented Get*/Name/UUID APIs).
+nvmlReturn_t nvmlInitWithFlags(unsigned int flags) {
+    LOG(__func__, "enter, flags=%u", flags);
+    (void)flags;
+    nvmlReturn_t result = nvmlInit_v2();
+    LOG(__func__, "exit");
+    return result;
+}
+
+// Static zero-filled export table: nvidia-smi requires SUCCESS from this call and
+// reports "Mismatch in versions between nvidia-smi and NVML" on any error return
+// (observed in the dqd v1.20.1 environment: NOT_SUPPORTED aborted right after init,
+// while a SUCCESS answer let it proceed to device enumeration). Contents are only
+// probed opportunistically — the bulk-stub probe survived on an uninitialized
+// pointer — so a zero-filled buffer is the safest defined answer.
+static char g_export_table[8192];
+
+nvmlReturn_t nvmlInternalGetExportTable(const void **exportTable, unsigned int tableType) {
+    LOG(__func__, "enter, tableType=%u", tableType);
+    if (exportTable == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    *exportTable = g_export_table;
+    LOG(__func__, "exit, zero-filled table");
+    return NVML_SUCCESS;
+}
+
+// Version getters: not on the -L path, but
+// nvidia-smi --version and similar invocations use them; same pattern as
+// nvmlSystemGetDriverVersion above.
+nvmlReturn_t nvmlSystemGetNVMLVersion(char* version, unsigned int length) {
+    LOG(__func__, "enter");
+    if (version == NULL || length == 0) return NVML_ERROR_INVALID_ARGUMENT;
+    snprintf(version, length, "%s", FAKE_DRIVER_VERSION);
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+
+nvmlReturn_t nvmlSystemGetCudaDriverVersion_v2(int* cudaDriverVersion) {
+    LOG(__func__, "enter");
+    if (cudaDriverVersion == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    *cudaDriverVersion = FAKE_CUDA_VERSION;
+    LOG(__func__, "exit");
+    return NVML_SUCCESS;
+}
+// **********************************************************************************************
+
 nvmlReturn_t nvmlSystemGetCudaDriverVersion(int* cudaDriverVersion) {
     LOG(__func__, "enter");
     if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
