@@ -1,7 +1,14 @@
 # fake-nvidia-device.service
 [Unit]
 Description=Create device nodes for fake nvidia driver
-After=multi-user.target
+# Per-GPU /dev/nvidiaN nodes must exist before nvidia-cdi-refresh generates
+# the CDI spec, otherwise the auto-generated spec lacks those device entries
+# and is not self-healing at boot.
+# Order after the module loader (so the module is present) and before the
+# refresh service (so nodes precede generate). References to a unit that does
+# not exist (toolkit not installed) are silently ignored by systemd.
+After=systemd-modules-load.service
+Before=nvidia-cdi-refresh.service
 
 [Service]
 Type=oneshot
