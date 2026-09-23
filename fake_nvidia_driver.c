@@ -70,4 +70,5 @@ module_exit(fake_nvidia_exit);
 
 MODULE_LICENSE("MIT");
 MODULE_AUTHOR("ssst0n3 with gemini-2.5-pro, patched for multi-kernel by ChatGPT");
-MODULE_DESCRIPTION("A fake driver with the correct GPU PCI path for nvidia-container-cli.");
+MODULE_VERSION("0.9.0-beta.1-fake");
+MODULE_DESCRIPTION("fake-nvidia: a fake NVIDIA driver registered under the name 'nvidia' for nvidia-container-toolkit / CDI-refresh compatibility research. NOT the proprietary NVIDIA driver.");
