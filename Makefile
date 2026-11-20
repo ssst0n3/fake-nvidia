@@ -199,6 +199,28 @@ clean:
 	# Clean up our own shared library file.
 	@echo "Cleaning shim library..."
 	rm -f $(SHIM_TARGET)
+	# Clean up the R4 consistency test binary.
+	rm -f test_nvml_consistency
+
+
+# --- Part 4b: NVML stub self-check targets (requirements-nvml-enumeration-compat.md) ---
+
+# R4: symbol-level consistency regression tests. Links the built stub into a
+# small C harness that asserts IsMigDeviceHandle/GetIndex semantics, index
+# stability across repeated calls, and GetHandleByIndex(GetIndex(h)) round-trip.
+.PHONY: test-nvml
+test-nvml: $(SHIM_TARGET)
+	$(CC) -o test_nvml_consistency test_nvml_consistency.c -L. -lfake_nvml -Wl,-rpath,'$$ORIGIN'
+	./test_nvml_consistency
+
+# R3: compare the NVML undefined-symbol sets of the installed toolkit binaries
+# against the stub's export table. Fails when a symbol on the nvcdi
+# device-enumeration path is missing (those die as "exit 127, symbol lookup
+# error" at runtime); other missing symbols are informational only.
+# Optional args are passed through: make check-nvml-symbols [stub] [binaries...]
+.PHONY: check-nvml-symbols
+check-nvml-symbols:
+	./check-nvml-symbols.sh $(ARGS)
 
 
 # --- Part 5: Install and Uninstall Rules ---
