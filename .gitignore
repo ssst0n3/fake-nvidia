@@ -1,0 +1,13 @@
+# Kernel module build artifacts
+*.ko
+*.o
+*.mod
+*.mod.c
+*.cmd
+modules.order
+Module.symvers
+.tmp_versions/
+
+# NVML shim and test build artifacts
+libfake_nvml.so
+test_nvml_consistency

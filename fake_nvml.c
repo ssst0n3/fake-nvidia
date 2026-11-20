@@ -433,6 +433,30 @@ nvmlReturn_t nvmlDeviceGetMinorNumber(nvmlDevice_t device, unsigned int* minorNu
     return NVML_SUCCESS;
 }
 
+// ******************** FIX: ADDED MISSING SYMBOL (go-nvml jit-cdi chain) ********************
+// Go-side NVML device enumeration in nvidia-container-toolkit (vendor go-nvml
+// binds NVML as direct cgo C symbols, resolved lazily by the ELF dynamic
+// linker) calls nvmlDeviceGetIndex on the full-GPU per-ID path
+// (pkg/nvcdi/full-gpu-nvml.go newFullGPUDeviceSpecGeneratorFromNVMLDevice).
+// Without it, `docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 ...`
+// dies at first call with exit 127 and a bare "symbol lookup error" line —
+// the linker terminates the process before any Go error handling runs.
+// Mirrors nvmlDeviceGetMinorNumber: the stub's device handle is the fakeGpu_t
+// itself, so the index is a struct field read. Do NOT cast the handle pointer
+// to an index — 64-bit-to-32-bit truncation yields address bits, not a device
+// index. device is NULL-checked here (unlike GetMinorNumber, whose NULL-device
+// dereference would fault); a non-NULL invalid pointer is not detected, the
+// same limit every existing function shares.
+nvmlReturn_t nvmlDeviceGetIndex(nvmlDevice_t device, unsigned int* index) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (device == NULL || index == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+    *index = ((fakeGpu_t*)device)->index;
+    LOG(__func__, "exit, index=%u", *index);
+    return NVML_SUCCESS;
+}
+// *******************************************************************************************
+
 // ******************** FIX: ADDED MISSING FUNCTION ********************
 nvmlReturn_t nvmlDeviceGetMaxMigDeviceCount(nvmlDevice_t device, unsigned int* count) {
     LOG(__func__, "enter");
@@ -472,6 +496,30 @@ nvmlReturn_t nvmlDeviceGetMigMode(nvmlDevice_t device, unsigned int *currentMode
     LOG(__func__, "exit");
     return NVML_SUCCESS;
 }
+
+// ******************** FIX: ADDED MISSING SYMBOL (go-nvml jit-cdi chain) ********************
+// nvmllib.newDeviceSpecGeneratorFromNVMLDevice (pkg/nvcdi/lib-nvml.go) calls
+// nvmlDeviceIsMigDeviceHandle unconditionally on the per-ID enumeration entry —
+// before any MIG decision and regardless of whether the host supports MIG.
+// Absent from the stub, the lazy ELF binding resolution terminates the caller
+// (nvidia-container-runtime / nvidia-ctk) with exit 127 at first call.
+// Consistent with the fake Tesla T4's "no MIG" setting (GetMaxMigDeviceCount
+// always 0, GetMigCapability always not-capable, GetMigMode always DISABLED):
+// no real handle can be a MIG device handle, so report isMigDevice = 0 with
+// NVML_SUCCESS. device is NULL-checked per requirement; a non-NULL invalid
+// pointer is not detected, the same limit every existing function shares.
+nvmlReturn_t nvmlDeviceIsMigDeviceHandle(nvmlDevice_t device, unsigned int* isMigDevice) {
+    LOG(__func__, "enter");
+    if (!g_initialized) return NVML_ERROR_UNINITIALIZED;
+    if (device == NULL || isMigDevice == NULL) return NVML_ERROR_INVALID_ARGUMENT;
+
+    // Fake Tesla T4 has no MIG devices; no handle is a MIG device handle.
+    *isMigDevice = 0;
+
+    LOG(__func__, "exit, isMigDevice=0");
+    return NVML_SUCCESS;
+}
+// *******************************************************************************************
 
 // ******************** FIX: ADDED MISSING MIG SYMBOL (toolkit >= 1.19.0) ********************
 // libnvidia-sandboxutils.so (shipped with nvidia-container-toolkit >= 1.19.0) dlopen's
