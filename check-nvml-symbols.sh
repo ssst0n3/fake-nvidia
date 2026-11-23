@@ -29,9 +29,27 @@ nvmlDeviceGetMigMode nvmlDeviceGetMaxMigDeviceCount nvmlDeviceGetMigCapability n
 nvmlDeviceGetDeviceHandleFromMigDeviceHandle nvmlDeviceGetGpuInstanceId nvmlDeviceGetComputeInstanceId"
 
 STUB="${1:-}"
-shift 2>/dev/null || true
+# shift is a POSIX special builtin: dash exits on a failed shift even with
+# `|| true`, so guard it rather than relying on error suppression.
+if [ $# -gt 0 ]; then
+    shift
+fi
 if [ -z "$STUB" ]; then
-    STUB=$(ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | tail -n1 | sed -n 's/.*=> \(.*\)/\1/p')
+    # Prefer the native-architecture libnvidia-ml.so.1 entry: on Debian/Ubuntu
+    # a compat32 (i386) entry also exists and is the REAL 32-bit driver
+    # library, not this stub — comparing against it would silently pass. The
+    # arch tag is derived from the compiler triple exactly like the Makefile
+    # install logic (x86_64-* -> x86-64, aarch64-* -> aarch64).
+    TRIPLE=$( (cc -dumpmachine 2>/dev/null) || (gcc -dumpmachine 2>/dev/null) )
+    case "$TRIPLE" in
+        x86_64-*)  ARCH_TAG="x86-64" ;;
+        aarch64-*) ARCH_TAG="aarch64" ;;
+        *)         ARCH_TAG="${TRIPLE%%-*}" ;;
+    esac
+    STUB=$(ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | grep ",$ARCH_TAG" | tail -n1 | sed -n 's/.*=> \(.*\)/\1/p')
+    if [ -z "$STUB" ]; then
+        STUB=$(ldconfig -p 2>/dev/null | grep 'libnvidia-ml\.so\.1 ' | head -n1 | sed -n 's/.*=> \(.*\)/\1/p')
+    fi
     if [ -z "$STUB" ]; then
         echo "SKIP: no libnvidia-ml.so.1 found via ldconfig; pass a stub path as the first argument" >&2
         exit 2
@@ -91,15 +109,23 @@ done
 echo ""
 echo "== missing (informational: not on the enumerated path) =="
 other=0
+shown=0
 for sym in $REQUIRED; do
     if ! echo "$EXPORTED" | grep -qx "$sym"; then
         if ! echo "$REACHABLE" | tr ' \n' '\n\n' | grep -qx "$sym"; then
-            echo "  missing: $sym"
             other=$((other + 1))
+            if [ "$shown" -lt 20 ]; then
+                echo "  missing: $sym"
+                shown=$((shown + 1))
+            fi
         fi
     fi
 done
-[ "$other" -eq 0 ] && echo "  (none)"
+if [ "$other" -eq 0 ]; then
+    echo "  (none)"
+elif [ "$other" -gt "$shown" ]; then
+    echo "  ... and $((other - shown)) more (full coverage not required; see REACHABLE)"
+fi
 
 if [ "$fail" -eq 1 ]; then
     echo ""
